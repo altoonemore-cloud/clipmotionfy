@@ -1,0 +1,258 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClipMotionfy — AI Video Clipper</title>
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #10111b;
+  color: #f6f6ff;
+  font-family: Arial, sans-serif;
+}
+
+main {
+  max-width: 900px;
+  margin: auto;
+  padding: 24px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.logo {
+  background: #725cff;
+  padding: 14px;
+  border-radius: 15px;
+  font-size: 24px;
+}
+
+h1 { font-size: 25px; margin: 0; }
+h2 { font-size: 20px; }
+
+p {
+  color: #aaaec5;
+  line-height: 1.5;
+}
+
+.panel {
+  background: #1a1c2b;
+  border: 1px solid #303249;
+  border-radius: 18px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.upload {
+  display: block;
+  border: 2px dashed #555078;
+  padding: 30px;
+  text-align: center;
+  border-radius: 14px;
+  cursor: pointer;
+}
+
+input[type=file] {
+  display: block;
+  max-width: 100%;
+  margin: 15px auto 0;
+}
+
+video {
+  width: 100%;
+  max-height: 420px;
+  margin-top: 18px;
+  border-radius: 12px;
+  background: #080910;
+}
+
+label.field {
+  display: block;
+  margin: 18px 0 8px;
+}
+
+input[type=number] {
+  width: 100%;
+  padding: 12px;
+  background: #111321;
+  border: 1px solid #41445d;
+  border-radius: 9px;
+  color: white;
+}
+
+button {
+  border: 0;
+  border-radius: 10px;
+  padding: 13px 18px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.primary {
+  background: #725cff;
+  color: white;
+  width: 100%;
+  margin-top: 16px;
+}
+
+button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.status {
+  color: #aaaec5;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+footer {
+  color: #8589a4;
+  font-size: 12px;
+  margin-top: 24px;
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="logo">▶</div>
+  <div>
+    <h1>ClipMotionfy</h1>
+    <p style="margin:5px 0">Your video, your best moments.</p>
+  </div>
+</header>
+
+<section class="panel">
+  <h2>🎬 Upload your video</h2>
+  <p>Pilih video dari perangkatmu untuk melihat pratinjau dan menentukan bagian yang ingin dipotong.</p>
+
+  <label class="upload">
+    📁 Klik untuk memilih video
+    <input id="file" type="file" accept="video/*">
+  </label>
+
+  <video id="video" controls playsinline hidden></video>
+  <p class="status" id="info">Belum ada video dipilih.</p>
+</section>
+
+<section class="panel">
+  <h2>✂️ Clip settings</h2>
+
+  <label class="field" for="start">Mulai pada (detik)</label>
+  <input id="start" type="number" min="0" step="0.1" value="0">
+
+  <label class="field" for="end">Selesai pada (detik)</label>
+  <input id="end" type="number" min="0.1" step="0.1" value="15">
+
+  <button class="primary" id="preview" disabled>
+    ▶ Lihat bagian yang dipilih
+  </button>
+
+  <p class="status" id="status">
+    Pilih video terlebih dahulu untuk memulai.
+  </p>
+</section>
+
+<footer>
+  ClipMotionfy Web Prototype · Video diproses untuk pratinjau di browser.
+  Fitur ekspor MP4 dan AI belum tersedia.
+</footer>
+</main>
+
+<script>
+const file = document.querySelector('#file');
+const video = document.querySelector('#video');
+const start = document.querySelector('#start');
+const end = document.querySelector('#end');
+const preview = document.querySelector('#preview');
+const status = document.querySelector('#status');
+const info = document.querySelector('#info');
+
+let objectUrl = null;
+let stopAt = null;
+
+file.addEventListener('change', () => {
+  const selected = file.files[0];
+  if (!selected) return;
+
+  if (objectUrl) URL.revokeObjectURL(objectUrl);
+  objectUrl = URL.createObjectURL(selected);
+
+  video.src = objectUrl;
+  video.hidden = false;
+  info.textContent = selected.name + ' · ' +
+    (selected.size / 1048576).toFixed(1) + ' MB';
+
+  status.textContent = 'Memuat informasi video...';
+  preview.disabled = true;
+});
+
+video.addEventListener('loadedmetadata', () => {
+  start.max = video.duration;
+  end.max = video.duration;
+  start.value = 0;
+  end.value = Math.min(15, video.duration).toFixed(1);
+
+  status.textContent = 'Durasi video: ' +
+    video.duration.toFixed(1) + ' detik.';
+
+  preview.disabled = false;
+});
+
+preview.addEventListener('click', async () => {
+  const from = Number(start.value);
+  const to = Number(end.value);
+
+  if (!video.src || from < 0 || to <= from ||
+      to > video.duration) {
+    status.textContent = 'Periksa waktu awal dan akhir klip.';
+    return;
+  }
+
+  if (stopAt) {
+    video.removeEventListener('timeupdate', stopAt);
+  }
+
+  video.pause();
+  video.currentTime = from;
+
+  const playSelectedPart = async () => {
+    try {
+      await video.play();
+
+      status.textContent = 'Memutar bagian terpilih...';
+
+      stopAt = () => {
+        if (video.currentTime >= to) {
+          video.pause();
+          video.removeEventListener('timeupdate', stopAt);
+          stopAt = null;
+          status.textContent = 'Pratinjau bagian selesai.';
+        }
+      };
+
+      video.addEventListener('timeupdate', stopAt);
+    } catch {
+      status.textContent =
+        'Tekan tombol Play pada video untuk memulai.';
+    }
+  };
+
+  if (Math.abs(video.currentTime - from) < 0.05) {
+    await playSelectedPart();
+  } else {
+    video.addEventListener('seeked', playSelectedPart, { once: true });
+  }
+});
+</script>
+</body>
+</html>
